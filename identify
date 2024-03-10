@@ -1,0 +1,90 @@
+const express = require('express');
+const bodyParser = require('body-parser');
+const { v4: uuidv4 } = require('uuid');
+const moment = require('moment');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(bodyParser.json());
+
+// Database simulation (in-memory for demonstration)
+let contacts = [];
+
+// Helper function to find a contact by email or phone number
+function findContact(email = null, phoneNumber = null) {
+    return contacts.find(contact =>
+        (email && contact.email === email) ||
+        (phoneNumber && contact.phoneNumber === phoneNumber)
+    );
+}
+
+// Helper function to create a new contact
+function createContact(email = null, phoneNumber = null, linkedId = null, linkPrecedence = null) {
+    const newContact = {
+        id: uuidv4(),
+        phoneNumber,
+        email,
+        linkedId,
+        linkPrecedence,
+        createdAt: moment().toISOString(),
+        updatedAt: moment().toISOString(),
+        deletedAt: null
+    };
+    contacts.push(newContact);
+    return newContact;
+}
+
+// Endpoint for identifying and consolidating contacts
+app.post('/identify', (req, res) => {
+    const { email, phoneNumber } = req.body;
+
+    // Check if there's an existing contact with the provided email or phone number
+    const existingContact = findContact(email, phoneNumber);
+
+    if (existingContact) {
+        const primaryContactId = existingContact.id;
+        const emails = [existingContact.email];
+        const phoneNumbers = [existingContact.phoneNumber];
+        const secondaryContactIds = [];
+
+        // Check if there's any secondary contact linked to the primary contact
+        contacts.forEach(contact => {
+            if (contact.linkedId === primaryContactId) {
+                emails.push(contact.email);
+                phoneNumbers.push(contact.phoneNumber);
+                secondaryContactIds.push(contact.id);
+            }
+        });
+
+        const response = {
+            contact: {
+                primaryContactId,
+                emails,
+                phoneNumbers,
+                secondaryContactIds
+            }
+        };
+
+        return res.status(200).json(response);
+    } else {
+        // If no existing contact found, create a new one and return it
+        const newContact = createContact(email, phoneNumber, null, 'primary');
+        const response = {
+            contact: {
+                primaryContactId: newContact.id,
+                emails: [newContact.email],
+                phoneNumbers: [newContact.phoneNumber],
+                secondaryContactIds: []
+            }
+        };
+
+        return res.status(200).json(response);
+    }
+});
+
+// Start the server
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
